@@ -1,0 +1,61 @@
+= asdf-vm plugin for Gloo Mesh
+
+The https://asdf-vm.com/[asdf-vm] plugin to install and manage multiple https://docs.solo.io/gloo-mesh/latest/[Gloo Mesh] versions.
+
+== Pre-requisites
+
+- https://asdf-vm.com/[asdf-vm]
+- https://www.gnu.org/software/bash/[bash v5.0]
+- https://curl.haxx.se/[curl] or https://www.gnu.org/software/wget/[wget]
+
+== Install
+
+[source,bash]
+----
+asdf plugin-add meshctl https://github.com/kameshsampath/asdf-meshctl
+----
+
+== Use
+
+Check [asdf](https://asdf-vm.github.io/asdf/) for instructions on how to install & manage versions of Gloo Meshctl.
+
+== List Installable Gloo Mesh versions
+
+[source,bash]
+----
+asdf list-all meshctl
+----
+
+== Download and install latest
+
+[source,bash]
+----
+asdf install meshctl latest
+----
+
+== Download and install specific version
+
+[source,bash]
+----
+asdf install meshctl 1.0.11
+----
+
+To make your Kubernetes projects use a specific version of Gloo Edge, run the following command from the root of project:
+
+[source,bash]
+----
+# e.g. asdf local glooctl 1.0.11
+asdf local meshctl <meshctl-verison>#<.>
+----
+
+The command will create a `.tools-version` in the local directory pointing. The path will now be adjusted to use the gloo meshctl version used in the command
+
+To set a Gloo Mesh version globally, run:
+
+[source,bash]
+----
+asdf global meshctl <meshctl-version>
+----
+
+== License
+link:./LICENSE[Apache License v2]

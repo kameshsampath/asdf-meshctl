@@ -1,0 +1,7 @@
+istio-versions
+istio-*
+*.log
+*.out
+downloadAndInstallIstio.sh
+glooctl*
+!bin

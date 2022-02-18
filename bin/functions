@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# shellcheck source=/dev/null
+# set -x 
+source "$ASDF_DIR/lib/utils.bash"
+CACHE_DIR="${TMPDIR:-/tmp}"
+CACHE_FILE="${CACHE_DIR}meshctl.releases"
+if [ ! -d "${CACHE_DIR}" ]
+then
+    mkdir -p "${CACHE_DIR}"
+fi
+
+trap 'test -d "${TEMP_DIR}" && rm -rf "${TEMP_DIR}"' EXIT
+
+function cache_meshctl_versions {
+  if [ ! -f "$CACHE_FILE" ];
+  then
+    local curl_args=("-sL")
+    if [ -n "$ASDF_GITHUB_API_TOKEN" ];
+	then 
+	  curl_args+=("-H\"Authorization: token $ASDF_GITHUB_API_TOKEN\"")
+	fi
+	curl "${curl_args[@]}" -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/solo-io/gloo-mesh/releases \
+	  | grep tag_name \
+	  | cut -d : -f 2,3 | tr -d v\"\, \
+	  | sort --version-sort > "${CACHE_FILE}"
+  fi
+}
+
+# Determine meshctl version to download
+function which_meshctl_version {
+	cache_meshctl_versions
+	if [ -z "$ASDF_INSTALL_VERSION" ] || [ "$ASDF_INSTALL_VERSION" == "latest" ];
+	then
+	MESHCTL_VERSION="$(sort --version-sort < "${CACHE_FILE}" | tail -n1)"
+	MESHCTL_VERSION="${MESHCTL_VERSION##*/}"
+	else
+	  MESHCTL_VERSION="${ASDF_INSTALL_VERSION}"
+	fi
+	echo "${MESHCTL_VERSION}"
+}
+
+function install {	
+	local mesh_version
+	mesh_version="v$(which_meshctl_version)"
+	local os=linux
+	if [ "$(uname -s)" = "Darwin" ]; then
+	  os=darwin
+	fi
+	local goarch=amd64
+	local filename="meshctl-${os}-${goarch}"
+	url="https://github.com/solo-io/gloo-mesh/releases/download/${mesh_version}/${filename}" 
+
+	if curl -f "${url}" >/dev/null 2>&1; then
+		echo "Attempting to download meshctl version ${mesh_version}"
+	fi
+
+	echo "Downloading and installing meshctl ${mesh_version}"
+
+	SHA=$(curl -sL "${url}.sha256" | cut -d' ' -f1)
+	curl -sLO "${url}"
+	
+	echo "Download complete!, validating checksum..."
+	checksum=$(openssl dgst -sha256 "${filename}" | awk '{ print $2 }')
+	if [ "$checksum" != "$SHA" ]; then
+		echo "Checksum validation failed." >&2
+		exit 1
+	fi
+  	echo "Checksum valid."
+	
+	mkdir -p "${ASDF_INSTALL_PATH}/bin"
+	chmod +x "${filename}"
+	mv "${filename}" "${ASDF_INSTALL_PATH}/bin/meshctl"
+}
+
+function list-all {
+	cache_meshctl_versions
+	tr '\n' ' ' < "${CACHE_FILE}"
+}
+
+function uninstall {
+   rm -rf "${ASDF_INSTALL_PATH}"
+}
+
+case "$(basename "${0}")" in
+    list-all) list-all
+              ;;
+    install) install
+             ;;
+    uninstall) uninstall ;;
+esac

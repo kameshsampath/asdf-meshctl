@@ -1,0 +1,85 @@
+name: Build and Release Plugin
+
+on:
+  push:
+    paths:
+      - "bin/**"
+      - "!.github/workflows/**"
+      - ".github/workflows/main.yml"
+jobs:
+  pluginTestAndRelease:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: "Git Config"
+        run: |
+          git config --global advice.objectNameWarning false
+      - name: "Get Latest Gloo Release"
+        id: glooctl-latest-version
+        uses: actions/github-script@v4.0.1
+        with:
+          result-encoding: string
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            return github.repos.getLatestRelease({
+              repo: 'gloo',
+              owner: 'solo-io'
+            })
+            .then(result => { return result.data.tag_name } )
+            .catch(err => console.log(err))
+      - name: "Latest Version Check"
+        id: asdf-meshctl-plugin-latest-test
+        uses: kameshsampath/asdf-vm-actions/plugin-test@add-outputs-to-test
+        with:
+          command: meshctl version
+      - name: "Pinned Version Check::1.7.11"
+        id: asdf-meshctl-plugin-pinned-test
+        uses: kameshsampath/asdf-vm-actions/plugin-test@add-outputs-to-test
+        with:
+          command: meshctl version
+          version: 1.7.11
+      - name: "Evaluate Results"
+        id: evaluate-test-results
+        run: |
+          LATEST_INSTALLED_VERSION=$(echo "${LATEST_STDOUT}" | grep -oP '(?<=Client: {"version":")[0-9]*.[0-9]*.[0-9]*(?=")')
+
+          PINNED_INSTALLED_VERSION=$(echo "${PINNED_STDOUT}" | grep -oP '(?<=Client: {"version":")[0-9]*.[0-9]*.[0-9]*(?=")')
+
+          INSTALL_RESULT='KO'
+          if [[ "v${LATEST_INSTALLED_VERSION}" == "${LATEST_VERSION}" ]] && [[ "${PINNED_INSTALLED_VERSION}" == "1.7.11" ]];
+          then 
+             INSTALL_RESULT='OK'
+          fi
+          echo "::set-output name=release::$INSTALL_RESULT"
+        env:
+          LATEST_VERSION: "${{ steps.meshctl-latest-version.outputs.result }}"
+          LATEST_STDOUT: "${{ join(fromJson(steps.asdf-meshctl-plugin-latest-test.outputs.stdout).lines,'\n') }}"
+          PINNED_STDOUT: "${{ join(fromJson(steps.asdf-meshctl-plugin-pinned-test.outputs.stdout).lines,'\n') }}"
+      - name: Debug
+        run: |
+          echo "${{ steps.evaluate-test-results.outputs }}"
+      - if: "${{ !env.ACT && steps.evaluate-test-results.outputs.release == 'OK' }}"
+        uses: GoogleCloudPlatform/release-please-action@v2.7.0
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release-type: simple
+          bump-minor-pre-major: true
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - if: "${{ !env.ACT }}"
+        name: Checkout code
+        uses: actions/checkout@v2
+
+      - if: "${{ !env.ACT }}"
+        name: Run ShellCheck
+        run: shellcheck bin/*
